@@ -26,19 +26,25 @@ class InferenceEngine:
     def extract_symbols(self, clause):
         """Extract unique symbols from a clause for truth table purposes."""
         for symbol in clause.replace('&', ' ').replace('=>', ' ').split():
-            if symbol.isalpha():
+            if symbol:
                 self.symbols.add(symbol)
 
     def tt_check(self):
         """Truth Table checking to determine if query is entailed by KB."""
         models_count = 0
-        for model in product([True, False], repeat=len(self.symbols)):
+        for model in product([False, True], repeat=len(self.symbols)):
+            models_count += 1
             env = dict(zip(self.symbols, model))
-            print(f"Current model: {env}")  # Debugging: print the current environment
-            if all(self.eval_clause(clause, env) for clause in self.kb):
-                models_count += 1
-                if self.eval_clause(self.query, env):
+            
+            # Check if KB is satisfied in this environment
+            kb_satisfied = all(self.eval_clause(clause, env) for clause in self.kb)
+            
+            if kb_satisfied:
+                query_result = self.eval_clause(self.query, env)
+                if query_result:
                     return f"YES: {models_count}"
+        
+        # If no environment satisfies both KB and query
         return "NO"
 
     def eval_clause(self, clause, env):
@@ -79,7 +85,6 @@ class InferenceEngine:
             inferred = set()
         if goal is None:
             goal = self.query
-
         if goal in inferred:
             return True
         inferred.add(goal)
@@ -89,8 +94,11 @@ class InferenceEngine:
                 premises, conclusion = clause.split('=>')
                 if conclusion.strip() == goal:
                     if all(self.backward_chaining(premise.strip(), inferred) for premise in premises.split('&')):
-                        return True
-        return False
+                        return f"YES: {', '.join(inferred)}"
+            else:
+                return True
+        if(inferred == goal):
+            return "NO"
 
     def run(self, method):
         """Run the selected inference method."""
@@ -99,7 +107,7 @@ class InferenceEngine:
         elif method == "FC":
             result = self.forward_chaining()
         elif method == "BC":
-            result = "YES" if self.backward_chaining() else "NO"
+            result = self.backward_chaining()
         else:
             result = "Invalid method. Choose TT, FC, or BC."
         print(result)
