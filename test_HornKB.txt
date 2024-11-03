@@ -1,4 +1,4 @@
 TELL
-~s & (p & ~r) => ~(q || s)
+~s & (p & ~r) => ~(q || s); p
 ASK
 p
