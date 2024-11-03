@@ -1,4 +1,3 @@
-import sys
 from itertools import product
 
 class InferenceEngine:
@@ -25,31 +24,33 @@ class InferenceEngine:
 
     def extract_symbols(self, clause):
         """Extract unique symbols from a clause for truth table purposes."""
-        for symbol in clause.replace('&', ' ').replace('=>', ' ').split():
-            if symbol:
+        clause = clause.replace('&', ' ').replace('||', ' ').replace('=>', ' ').replace('<=>', ' ').replace('~', ' ').replace('(', ' ').replace(')', ' ')
+        for symbol in clause.split():
+            if symbol and symbol not in ["True", "False"]:  # Exclude boolean literals
                 self.symbols.add(symbol)
 
     def tt_check(self):
         """Truth Table checking to determine if query is entailed by KB."""
         models_count = 0
+
         for model in product([False, True], repeat=len(self.symbols)):
-            models_count += 1
             env = dict(zip(self.symbols, model))
-            
-            # Check if KB is satisfied in this environment
             kb_satisfied = all(self.eval_clause(clause, env) for clause in self.kb)
-            
             if kb_satisfied:
-                query_result = self.eval_clause(self.query, env)
-                if query_result:
+                models_count += 1
+                # If KB is satisfied in this environment, check if the query is also satisfied
+                if self.eval_clause(self.query, env):
+                    print(f"Model: {env}")
                     return f"YES: {models_count}"
-        
-        # If no environment satisfies both KB and query
+            
         return "NO"
 
     def eval_clause(self, clause, env):
         """Evaluate a clause with the given environment."""
-        if '=>' in clause:
+        if '<=>' in clause:
+            lhs, rhs = clause.split('<=>')
+            return self.eval_expr(lhs.strip(), env) == self.eval_expr(rhs.strip(), env)
+        elif '=>' in clause:
             lhs, rhs = clause.split('=>')
             return not self.eval_expr(lhs.strip(), env) or self.eval_expr(rhs.strip(), env)
         else:
@@ -57,9 +58,19 @@ class InferenceEngine:
 
     def eval_expr(self, expr, env):
         """Evaluate an expression using the environment (truth values)."""
+        expr = expr.strip()
+        
+        if expr.startswith('~'):
+            return not self.eval_expr(expr[1:].strip(), env)
+        
         if '&' in expr:
             return all(self.eval_expr(subexpr.strip(), env) for subexpr in expr.split('&'))
-        return env.get(expr.strip(), False)  # Return False if the key is not found
+        
+        if '||' in expr:
+            return any(self.eval_expr(subexpr.strip(), env) for subexpr in expr.split('||'))
+        
+        # Base case: check for individual symbols or constants True/False
+        return env.get(expr, expr == "True")  # default to False if symbol is not found
 
     def forward_chaining(self):
         """Forward chaining algorithm."""
@@ -95,10 +106,7 @@ class InferenceEngine:
                 if conclusion.strip() == goal:
                     if all(self.backward_chaining(premise.strip(), inferred) for premise in premises.split('&')):
                         return f"YES: {', '.join(inferred)}"
-            else:
-                return True
-        if(inferred == goal):
-            return "NO"
+        return "NO"
 
     def run(self, method):
         """Run the selected inference method."""
@@ -111,13 +119,3 @@ class InferenceEngine:
         else:
             result = "Invalid method. Choose TT, FC, or BC."
         print(result)
-
-# Example usage:
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python initial.py <filename> <method>")
-    else:
-        filename = sys.argv[1]
-        method = sys.argv[2]
-        engine = InferenceEngine(filename)
-        engine.run(method)
