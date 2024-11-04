@@ -1,0 +1,6 @@
+TELL
+(p  & r)=>q; ~(~p); r
+ASK
+~q
+EXPECT
+NO

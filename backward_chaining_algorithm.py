@@ -1,4 +1,4 @@
-from evaluate import eval_clause
+from evaluate import eval_clause, eval_expr
 def backward_chaining(kb, query, symbols, goal=None, inferred=None):
     """Backward chaining algorithm with support for complex expressions."""
     if inferred is None:
@@ -13,11 +13,15 @@ def backward_chaining(kb, query, symbols, goal=None, inferred=None):
         if '=>' in clause:
             premises, conclusion = clause.split('=>')
             if conclusion.strip() == goal:
-                premises_satisfied = all(backward_chaining(kb, query, symbols, premise.strip(), inferred) for premise in premises.split('&'))
-                if premises_satisfied:
+                if all(backward_chaining(kb, query, symbols, premise.strip(), inferred) for premise in premises.split('&')):
                     return f"YES: {', '.join(inferred)}"
-        elif eval_clause(clause, dict.fromkeys(inferred, True)):
-            inferred.add(clause)
+        elif '<=>' in clause:
+            lhs, rhs = clause.split('<=>')
+            if backward_chaining(kb, query, symbols, lhs.strip(), inferred) and backward_chaining(kb, query, symbols, rhs.strip(), inferred):
+                return f"YES: {', '.join(inferred)}"
+        else:
+            if eval_clause(clause, dict(zip(symbols, [True]*len(symbols)))):
+                inferred.add(clause)
             if goal == clause:
                 return f"YES: {', '.join(inferred)}"
     return "NO"

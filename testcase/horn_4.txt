@@ -1,0 +1,6 @@
+TELL
+a => b; b =>c; c => d; d;
+ASK
+d
+EXPECT
+YES

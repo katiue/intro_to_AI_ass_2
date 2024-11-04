@@ -1,0 +1,6 @@
+TELL
+a || ~b; b || ~c || ~e; ~d || f; f || d || e; ~f; d || c
+ASK
+a
+EXPECT
+YES

@@ -1,0 +1,6 @@
+TELL
+a
+ASK
+a
+EXPECT
+YES
