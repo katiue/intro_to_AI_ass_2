@@ -16,8 +16,8 @@ def eval_expr(expr, env):
     expr = expr.strip()
     
     while '(' in expr:
-            # Find innermost parentheses
-            expr = re.sub(r'\(([^()]+)\)', lambda x: str(eval_expr(x.group(1), env)), expr)
+        # Find innermost parentheses
+        expr = re.sub(r'\(([^()]+)\)', lambda x: str(eval_expr(x.group(1), env)), expr)
 
     if '&' in expr:
         return all(eval_expr(subexpr.strip(), env) for subexpr in expr.split('&'))

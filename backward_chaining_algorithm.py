@@ -13,7 +13,7 @@ def backward_chaining(kb, query, symbols, goal=None, inferred=None):
         if '=>' in clause:
             premises, conclusion = clause.split('=>')
             if conclusion.strip() == goal:
-                premises_satisfied = all(backward_chaining(premise.strip(), inferred) for premise in premises.split('&'))
+                premises_satisfied = all(backward_chaining(kb, query, symbols, premise.strip(), inferred) for premise in premises.split('&'))
                 if premises_satisfied:
                     return f"YES: {', '.join(inferred)}"
         elif eval_clause(clause, dict.fromkeys(inferred, True)):
