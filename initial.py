@@ -3,6 +3,26 @@ import itertools
 import re
 import os
 
+def split_clauses(clause):
+    clauses = []
+    depth = 0
+    current_clause = ''
+    for char in clause:
+        if char == '(':
+            depth += 1
+            current_clause += char
+        elif char == ')':
+            depth -= 1
+            current_clause += char
+        elif char == '&' and depth == 0:
+            clauses.append(current_clause.strip())
+            current_clause = ''
+        else:
+            current_clause += char
+    if current_clause.strip():
+        clauses.append(current_clause.strip())
+    return clauses
+
 class InferenceEngine:
     def __init__(self, kb, query, filename):
         self.filename = filename
@@ -16,25 +36,71 @@ class InferenceEngine:
     def parse_kb(self):
         # Split knowledge base by clauses and identify rules and facts
         for clause in self.kb.split(";"):
-            clause = clause.replace(" ", "").strip()
-            if '=>' in clause or '<=>' in clause:
-                self.rules.append(clause)
-            elif clause:
-                self.facts.append(clause)
-            self.extract_symbols(clause)
+            clause = clause.strip()
+            if not clause:
+                continue
+            # Use the custom split_clauses function
+            sub_clauses = split_clauses(clause)
+            for sub_clause in sub_clauses:
+                sub_clause = sub_clause.strip()
+                if not sub_clause:
+                    continue
+                self.extract_symbols(sub_clause)
+                if '=>' in sub_clause or '<=>' in sub_clause:
+                    self.rules.append(sub_clause)
+                else:
+                    self.facts.append(sub_clause)
 
     def extract_symbols(self, expression):
-        # Extract unique symbols from the expression
-        tokens = re.findall(r'\w+', expression)
+        # Remove logical operators and parentheses
+        expression = re.sub(r'[&|~()<=>]', ' ', expression)
+        tokens = expression.split()
         self.symbols.update(tokens)
 
+    def add_parentheses(self, expr):
+        # Add parentheses around expressions based on operator precedence
+        expr = expr.replace('~', ' not ')
+        # Handle negations
+        expr = re.sub(r'not\s+(\w+)', r'(not \1)', expr)
+        
+        # Handle conjunctions
+        expr = re.sub(r'(\w+)\s*&\s*(\w+)', r'(\1 and \2)', expr)
+        
+        # Handle disjunctions
+        expr = re.sub(r'(\w+)\s*\|\|\s*(\w+)', r'(\1 or \2)', expr)
+        
+        # Handle implications and biconditionals
+        # Add parentheses to ensure correct precedence
+        return expr
+
     def eval_expr(self, expr, model):
-        # Replace logical symbols with Python boolean operators
-        expr.strip()
-        expr = expr.replace("<=>", "==").replace("=>", "<=").replace("&", " and ").replace("||", " or ").replace("~", " not ")
-        # Replace each symbol in the expression with its truth value from the model
-        for symbol in self.symbols:
-            expr = re.sub(r'\b' + symbol + r'\b', str(model.get(symbol, False)), expr)
+        expr = expr.strip()
+        # Replace each symbol with its truth value from the model
+        for symbol in sorted(self.symbols, key=lambda s: -len(s)):
+            expr = re.sub(r'\b{}\b'.format(re.escape(symbol)), str(model.get(symbol, False)), expr)
+
+        # Replace logical negation
+        expr = expr.replace('~', ' not ')
+        # Replace logical conjunction and disjunction
+        expr = expr.replace('&', ' and ').replace('||', ' or ')
+
+        # Iteratively replace implications and biconditionals
+        while '<=>' in expr or '=>' in expr:
+            # Replace biconditionals
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*([^\s()]+)', r'((\g<1> and \g<2>) or ((not \g<1>) and (not \g<2>)))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*\(([^()]+)\)', r'((\g<1> and \g<2>) or ((not (\g<1>)) and (not (\g<2>))))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*([^\s()]+)', r'((\g<1> and \g<2>) or ((not (\g<1>)) and (not \g<2>)))', expr)
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*\(([^()]+)\)', r'((\g<1> and \g<2>) or ((not \g<1>) and (not (\g<2>))))', expr)
+
+            # Replace implications
+            expr = re.sub(r'([^\s()]+)\s*=>\s*([^\s()]+)', r'(not \g<1> or \g<2>)', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\g<1>) or (\g<2>))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\g<1>) or \g<2>)', expr)
+            expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \g<1> or (\g<2>))', expr)
+
+        # Remove extra whitespace
+        expr = ' '.join(expr.split())
+
         try:
             return eval(expr)
         except Exception as e:
@@ -44,9 +110,15 @@ class InferenceEngine:
 
     def tt_entails(self):
         # Truth Table Method for Entailment
+        is_kb_always_true = False
         for model in self.generate_models():
-            if self.is_kb_true(model) and not self.eval_expr(self.query, model):
-                return "NO"
+            if self.is_kb_true(model):
+                is_kb_always_true = True
+                if not self.eval_expr(self.query, model):
+                    return "NO"
+        # If KB is inconsistent (never true), return "NO"
+        if not is_kb_always_true:
+            return "NO"
         return "YES"
 
     def generate_models(self):
@@ -59,12 +131,14 @@ class InferenceEngine:
 
     def forward_chaining(self):
         # Forward Chaining Method
-        known_facts = set(fact for fact in self.facts if self.eval_expr(fact, {fact: True}))
+        known_facts = set(self.facts)
         while True:
             added = False
             for rule in self.rules:
-                lhs, rhs = rule.split("=>")
-                lhs, rhs = lhs.strip(), rhs.strip()
+                lhs, rhs = re.split(r'\s*=>\s*|\s*<=>\s*', rule, 1)
+                lhs = lhs.strip()
+                rhs = rhs.strip()
+                # Evaluate lhs with the current known facts
                 if self.eval_expr(lhs, {fact: True for fact in known_facts}) and rhs not in known_facts:
                     known_facts.add(rhs)
                     added = True
@@ -84,10 +158,13 @@ class InferenceEngine:
         if goal in self.facts:
             return True
         for rule in self.rules:
-            lhs, rhs = rule.split("=>")
+            lhs, rhs = re.split(r'\s*=>\s*|\s*<=>\s*', rule, 1)
+            lhs = lhs.strip()
             rhs = rhs.strip()
             if rhs == goal:
-                if all(self.bc_recursive(sym.strip(), inferred) for sym in lhs.split("&")):
+                # Split lhs into premises considering conjunctions
+                premises = split_clauses(lhs)
+                if all(self.bc_recursive(premise.strip(), inferred) for premise in premises):
                     return True
         return False
 
@@ -107,11 +184,11 @@ def parse_file(filename):
     with open(filename, 'r') as file:
         content = file.read()
         tell_part, other_part = content.split('ASK')
-        ask_part, expext_part = other_part.split('EXPECT')
+        ask_part, expect_part = other_part.split('EXPECT')
         tell_part = tell_part.replace("TELL", "").strip()
         ask_part = ask_part.strip()
-        expext_part = expext_part.strip()
-    return tell_part, ask_part, expext_part
+        expect_part = expect_part.strip()
+    return tell_part, ask_part, expect_part
 
 def run(kb, query, method):
     engine = InferenceEngine(kb, query)
@@ -142,7 +219,7 @@ def run_all_tests_in_folder(folder_path, method):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python main.py <folder_path> <method>")
+        print("Usage: python initial.py <folder_path> <method>")
     else:
         folder_path = sys.argv[1]
         method = sys.argv[2]
