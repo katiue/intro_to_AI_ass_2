@@ -43,6 +43,7 @@ class InferenceEngine:
             sub_clauses = split_clauses(clause)
             for sub_clause in sub_clauses:
                 sub_clause = sub_clause.strip()
+                sub_clause = sub_clause.replace(' ', '')  # Corrected line
                 if not sub_clause:
                     continue
                 self.extract_symbols(sub_clause)
@@ -50,6 +51,14 @@ class InferenceEngine:
                     self.rules.append(sub_clause)
                 else:
                     self.facts.append(sub_clause)
+
+    def check_query_possible(self):
+        expression = re.sub(r'[&|~()<=>]', ' ', self.query)
+        tokens = expression.split()
+        for token in tokens:
+            if token not in self.symbols:
+                return False
+        return True
 
     def extract_symbols(self, expression):
         # Remove logical operators and parentheses
@@ -78,7 +87,6 @@ class InferenceEngine:
         # Replace each symbol with its truth value from the model
         for symbol in sorted(self.symbols, key=lambda s: -len(s)):
             expr = re.sub(r'\b{}\b'.format(re.escape(symbol)), str(model.get(symbol, False)), expr)
-
         # Replace logical negation
         expr = expr.replace('~', ' not ')
         # Replace logical conjunction and disjunction
@@ -87,17 +95,16 @@ class InferenceEngine:
         # Iteratively replace implications and biconditionals
         while '<=>' in expr or '=>' in expr:
             # Replace biconditionals
-            expr = re.sub(r'([^\s()]+)\s*<=>\s*([^\s()]+)', r'((\g<1> and \g<2>) or ((not \g<1>) and (not \g<2>)))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*\(([^()]+)\)', r'((\g<1> and \g<2>) or ((not (\g<1>)) and (not (\g<2>))))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*([^\s()]+)', r'((\g<1> and \g<2>) or ((not (\g<1>)) and (not \g<2>)))', expr)
-            expr = re.sub(r'([^\s()]+)\s*<=>\s*\(([^()]+)\)', r'((\g<1> and \g<2>) or ((not \g<1>) and (not (\g<2>))))', expr)
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
 
             # Replace implications
-            expr = re.sub(r'([^\s()]+)\s*=>\s*([^\s()]+)', r'(not \g<1> or \g<2>)', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\g<1>) or (\g<2>))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\g<1>) or \g<2>)', expr)
-            expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \g<1> or (\g<2>))', expr)
-
+            expr = re.sub(r'([^\s()]+)\s*=>\s*([^\s()]+)', r'(not \1 or \2)', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\1) or (\2))', expr)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\1) or \2)', expr)
+            expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \1 or (\2))', expr)
         # Remove extra whitespace
         expr = ' '.join(expr.split())
 
@@ -110,16 +117,10 @@ class InferenceEngine:
 
     def tt_entails(self):
         # Truth Table Method for Entailment
-        is_kb_always_true = False
         for model in self.generate_models():
-            if self.is_kb_true(model):
-                is_kb_always_true = True
-                if not self.eval_expr(self.query, model):
-                    return "NO"
-        # If KB is inconsistent (never true), return "NO"
-        if not is_kb_always_true:
-            return "NO"
-        return "YES"
+            if self.is_kb_true(model) and self.eval_expr(self.query, model):
+                    return "YES"
+        return "NO"
 
     def generate_models(self):
         # Generate all possible truth assignments
@@ -170,6 +171,8 @@ class InferenceEngine:
 
     def ask(self, method):
         # Main entry point to evaluate the query using the specified method
+        if(not self.check_query_possible()):
+            return "NO"
         if method == "TT":
             return self.tt_entails()
         elif method == "FC":

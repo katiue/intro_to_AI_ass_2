@@ -3,4 +3,4 @@ a=>b;b=>c;c=>a
 ASK
 a
 EXPECT
-NO
+YES
