@@ -66,48 +66,37 @@ class InferenceEngine:
         tokens = expression.split()
         self.symbols.update(tokens)
 
-    def add_parentheses(self, expr):
-        # Add parentheses around expressions based on operator precedence
-        expr = expr.replace('~', ' not ')
-        # Handle negations
-        expr = re.sub(r'not\s+(\w+)', r'(not \1)', expr)
-        
-        # Handle conjunctions
-        expr = re.sub(r'(\w+)\s*&\s*(\w+)', r'(\1 and \2)', expr)
-        
-        # Handle disjunctions
-        expr = re.sub(r'(\w+)\s*\|\|\s*(\w+)', r'(\1 or \2)', expr)
-        
-        # Handle implications and biconditionals
-        # Add parentheses to ensure correct precedence
-        return expr
-
     def eval_expr(self, expr, model):
         expr = expr.strip()
         # Replace each symbol with its truth value from the model
         for symbol in sorted(self.symbols, key=lambda s: -len(s)):
             expr = re.sub(r'\b{}\b'.format(re.escape(symbol)), str(model.get(symbol, False)), expr)
 
-        # Iteratively replace implications and biconditionals
-        while '<=>' in expr or '=>' in expr:
-            # Replace biconditionals
-            expr = re.sub(r'([^\s()]+)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
-            expr = re.sub(r'([^\s()]+)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr)
+        # Wrap negations (~) with parentheses around variables and parenthesized expressions
+        expr = re.sub(r'~([^\s()&|]+)', r'(~\1)', expr)   # Single variable negation, e.g., ~p -> (~p)
+        expr = re.sub(r'~(\([^()]+\))', r'(~\1)', expr)    # Parenthesized expression negation, e.g., ~(a&b) -> (~(a&b))
 
-            # Replace implications
-            expr = re.sub(r'([^\s()]+)\s*=>\s*([^\s()]+)', r'(not \1 or \2)', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\1) or (\2))', expr)
-            expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\1) or \2)', expr)
-            expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \1 or (\2))', expr)
+        # Iteratively replace implications and biconditionals until none remain
+        previous_expr = None
+        while previous_expr != expr:
+            previous_expr = expr
 
-        # Replace logical negation
+            # Replace the first occurrence of a biconditional (<=>)
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr, count=1)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr, count=1)
+            expr = re.sub(r'\(([^()]+)\)\s*<=>\s*([^\s()]+)', r'((\1 and \2) or ((not \1) and (not \2)))', expr, count=1)
+            expr = re.sub(r'([^\s()]+)\s*<=>\s*\(([^()]+)\)', r'((\1 and \2) or ((not \1) and (not \2)))', expr, count=1)
+
+            # Replace the first occurrence of an implication (=>)
+            expr = re.sub(r'([^\s()]+)\s*=>\s*([^\s()]+)', r'(not \1 or \2)', expr, count=1)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\1) or (\2))', expr, count=1)
+            expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\1) or \2)', expr, count=1)
+            expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \1 or (\2))', expr, count=1)
+
+        # Replace logical negation, conjunction, and disjunction
         expr = expr.replace('~', ' not ')
-
-        # Replace logical conjunction and disjunction
         expr = expr.replace('&', ' and ').replace('||', ' or ')
-        
+
         # Remove extra whitespace
         expr = ' '.join(expr.split())
 
@@ -117,7 +106,7 @@ class InferenceEngine:
             print(self.filename)
             print(f"Error evaluating expression: {expr}, Error: {e}")
             return False
-
+    
     def tt_entails(self):
         # Truth Table Method for Entailment
         for model in self.generate_models():
