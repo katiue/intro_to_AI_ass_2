@@ -2,6 +2,7 @@ import sys
 import itertools
 import re
 import os
+from geminiAPI import parse_prompt, process_prompt, translate
 
 def split_clauses(clause):
     clauses = []
@@ -213,9 +214,27 @@ def run_all_tests_in_folder(folder_path, method):
     print(f"\nTotal Tests: {total_tests} | Passed: {passed_tests} | Failed: {total_tests - passed_tests}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
+        print("Allowed inputs:")
         print("Usage: python initial.py <folder_path> <method>")
+        print("Usage: python initial.py -f <filename> <method>")
+        print("Usage: python initial.py -nl <filename> <method>")
     else:
-        folder_path = sys.argv[1]
-        method = sys.argv[2]
-        run_all_tests_in_folder(folder_path, method)
+        if sys.argv[1] == "-f":
+            filename = sys.argv[2]
+            method = sys.argv[3]
+            kb, query, _ = parse_file(filename)
+            run(kb, query, method)
+        elif sys.argv[1] == "-nl":
+            filename = sys.argv[2]
+            method = sys.argv[3]
+            kb, query, dictionary = process_prompt(filename)
+            engine = InferenceEngine(kb, query, filename)
+            result = engine.ask(method)
+            print(f"RESULT\n{result}")
+        elif os.path.isdir(sys.argv[1]):
+            folder_path = sys.argv[1]
+            method = sys.argv[2]
+            run_all_tests_in_folder(folder_path, method)
+        else:
+            print("Invalid input. Please provide correct arguments.")
