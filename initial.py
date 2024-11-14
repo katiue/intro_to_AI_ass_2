@@ -87,10 +87,6 @@ class InferenceEngine:
         # Replace each symbol with its truth value from the model
         for symbol in sorted(self.symbols, key=lambda s: -len(s)):
             expr = re.sub(r'\b{}\b'.format(re.escape(symbol)), str(model.get(symbol, False)), expr)
-        # Replace logical negation
-        expr = expr.replace('~', ' not ')
-        # Replace logical conjunction and disjunction
-        expr = expr.replace('&', ' and ').replace('||', ' or ')
 
         # Iteratively replace implications and biconditionals
         while '<=>' in expr or '=>' in expr:
@@ -105,6 +101,13 @@ class InferenceEngine:
             expr = re.sub(r'\(([^()]+)\)\s*=>\s*\(([^()]+)\)', r'(not (\1) or (\2))', expr)
             expr = re.sub(r'\(([^()]+)\)\s*=>\s*([^\s()]+)', r'(not (\1) or \2)', expr)
             expr = re.sub(r'([^\s()]+)\s*=>\s*\(([^()]+)\)', r'(not \1 or (\2))', expr)
+
+        # Replace logical negation
+        expr = expr.replace('~', ' not ')
+
+        # Replace logical conjunction and disjunction
+        expr = expr.replace('&', ' and ').replace('||', ' or ')
+        
         # Remove extra whitespace
         expr = ' '.join(expr.split())
 

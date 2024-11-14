@@ -86,19 +86,15 @@ def process_input(sentence):
     
     if sentence.endswith('.'):
         # Knowledge base entry
-        print("Processing knowledge base statement:")
         logic_expr, dict_map = process_sentence(sentence[:-1])
     elif sentence.endswith(';'):
         # Complex conditional statement
-        print("Processing conditional statement in knowledge base:")
         logic_expr, dict_map = process_sentence(sentence[:-1])
     elif sentence.endswith('?'):
         # Query
-        print("Processing query:")
         logic_expr, dict_map = process_sentence(sentence[:-1])
     else:
         # Default handling if not ending with punctuation
-        print("Processing general statement:")
         logic_expr, dict_map = process_sentence(sentence)
 
     return logic_expr, dict_map
@@ -119,3 +115,5 @@ for i in range(0, len(sentences) - 1, 2):
 for s in processed_sentences:
     if s:  # Ensure the sentence is not empty
         logic_epxr, _ = process_input(s)
+        print(logic_epxr)
+        print(translate(logic_epxr))
