@@ -15,9 +15,6 @@ def split_clauses(clause):
         elif char == ')':
             depth -= 1
             current_clause += char
-        elif char == '&' and depth == 0:
-            clauses.append(current_clause.strip())
-            current_clause = ''
         else:
             current_clause += char
     if current_clause.strip():
@@ -52,6 +49,8 @@ class InferenceEngine:
                     self.rules.append(sub_clause)
                 else:
                     self.facts.append(sub_clause)
+            print(self.rules)
+            print(self.facts)
 
     def check_query_possible(self):
         expression = re.sub(r'[&|~()<=>]', ' ', self.query)
@@ -142,33 +141,42 @@ class InferenceEngine:
         details = ' '.join(self.facts)
         return ("YES", details) if self.eval_expr(self.query, {fact: True for fact in known_facts}) else ("NO", 0)
 
-    def backward_chaining(self):
-        # Backward Chaining Method
-        result, detail = self.bc_recursive(self.query, set())
-        if result:
-            return "YES", detail
-        else:
-            return "NO", "0"
 
-    def bc_recursive(self, goal, inferred):
-        # Recursive helper for backward chaining
-        if goal in inferred:
-            return False, "0"  # Return a tuple
-        inferred.add(goal)
+    def backward_chain(self, goal=None, visited=None):
+        """Backward chaining to determine if the goal can be satisfied."""
+        if goal is None:
+            goal = self.query
+
+        if visited is None:
+            visited = set()
+            
+        # Check if the goal is a fact
         if goal in self.facts:
-            return True, goal  # Return a tuple with the goal as detail
+            return True, ''
+
+        if goal in visited:
+            return False, "" # Avoid infinite loops
+        visited.add(goal)
+
+        # Check if the goal can be inferred from rules
         for rule in self.rules:
-            lhs, rhs = re.split(r'\s*=>\s*|\s*<=>\s*', rule, 1)
-            lhs = lhs.strip()
-            rhs = rhs.strip()
-            if rhs == goal:
-                # Split lhs into premises considering conjunctions
-                premises = split_clauses(lhs)
-                premise_results = [self.bc_recursive(premise.strip(), inferred) for premise in premises]
-                if all(result for result, _ in premise_results):
+            if '<=>' not in rule or '=>' not in rule:
+                continue
+            if '<=>' in rule:
+                premise, conclusion = map(str.strip, rule.split('<=>'))
+            else:
+                premise, conclusion = map(str.strip, rule.split('=>'))
+            conclusion = conclusion.replace(' ', '')
+            if conclusion == goal:
+                # Split the premise into sub-goals
+                sub_goals = [g.strip() for g in re.split(r'&|\|', premise) if g.strip()]
+                print(sub_goals)
+                if all(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
                     details = ' '.join(self.facts)
                     return True, details
-        return False, "0"  # Return a tuple
+
+        # If no fact or rule supports the goal
+        return False, "0"
 
     def ask(self, method):
         # Main entry point to evaluate the query using the specified method
@@ -179,7 +187,7 @@ class InferenceEngine:
         elif method == "FC":
             return self.forward_chaining()
         elif method == "BC":
-            return self.backward_chaining()
+            return self.backward_chain()
         else:
             return "Unknown method", "N/A"
 
@@ -196,8 +204,10 @@ def run(kb, query, method, filename):
     engine = InferenceEngine(kb, query, filename)
     result, detail = engine.ask(method)
     detail = str(detail)
-    if result == "YES":
+    if result == "YES" or result:
         result = "YES: " + detail
+    else:
+        result = "NO"
     print(f"RESULT\n{result}")
 
 def run_all_tests_in_folder(folder_path, method):
@@ -208,14 +218,18 @@ def run_all_tests_in_folder(folder_path, method):
             kb, query = parse_file(file_path)
             engine = InferenceEngine(kb, query, filename)
             actual_output, detail = engine.ask(method)
+            if actual_output == True or actual_output == "YES":
+                actual_output = "YES"
+            else:
+                actual_output = "NO"
             test_results.append((filename, actual_output, detail))
 
     # Display results
-    print("\nTest Results Summary:")
     for test_file, result, detail in test_results:
         print(f"File: {test_file} | Result: {result} | Details: {detail}")
 
     # Summary
+    print("\nTest Results Summary:")
     total_tests = len(test_results)
     YES_tests = sum(1 for _, result, _ in test_results if result == "YES")
     NO_tests = total_tests - YES_tests
@@ -224,8 +238,8 @@ def run_all_tests_in_folder(folder_path, method):
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Allowed inputs:")
-        print("Usage: python initial.py <folder_path> <method>")
-        print("Usage: python initial.py -f <filename> <method>")
+        print("Usage: python initial.py <filename> <method>")
+        print("Usage: python initial.py -f <folder_path> <method>")
         print("Usage: python initial.py -nl <filename> <method>")
     else:
         if sys.argv[1] == "-f":
@@ -233,15 +247,23 @@ if __name__ == "__main__":
                 folder_path = sys.argv[2]
                 method = sys.argv[3]
                 run_all_tests_in_folder(folder_path, method)
+            else:
+                print("Invalid folder path.")
         elif sys.argv[1] == "-nl":
-            filename = sys.argv[2]
-            method = sys.argv[3]
-            kb, query, dictionary = process_prompt(filename)
-            engine = InferenceEngine(kb, query, filename)
-            result = engine.ask(method)
-            print(f"RESULT\n{result}")
+            if not os.path.isfile(sys.argv[2]):
+                print("Invalid file path.")
+            else:
+                filename = sys.argv[2]
+                method = sys.argv[3]
+                kb, query, dictionary = process_prompt(filename)
+                engine = InferenceEngine(kb, query, filename)
+                result = engine.ask(method)
+                print(f"RESULT\n{result}")
         else:
-            filename = sys.argv[1]
-            method = sys.argv[2]
-            kb, query, _ = parse_file(filename)
-            run(kb, query, method, filename)
+            if not os.path.isfile(sys.argv[1]):
+                print("Invalid file path.")
+            else:
+                filename = sys.argv[1]
+                method = sys.argv[2]
+                kb, query = parse_file(filename)
+                run(kb, query, method, filename)
