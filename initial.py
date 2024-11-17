@@ -2,7 +2,7 @@ import sys
 import itertools
 import re
 import os
-from geminiAPI import parse_prompt, process_prompt, translate
+from NLtranslator import process_prompt, translate
 
 def split_clauses(clause):
     clauses = []
@@ -270,7 +270,11 @@ if __name__ == "__main__":
                 method = sys.argv[3]
                 kb, query, dictionary = process_prompt(filename)
                 engine = InferenceEngine(kb, query, filename)
-                result = engine.ask(method)
+                result, detail = engine.ask(method)
+                if(result == "YES" or result):
+                    result = "YES: " + translate(detail, dictionary)
+                else:
+                    result = "NO"
                 print(f"RESULT\n{result}")
         else:
             if not os.path.isfile(sys.argv[1]):

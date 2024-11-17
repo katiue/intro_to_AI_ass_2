@@ -1,119 +1,52 @@
-import re
-from nltk import word_tokenize, pos_tag
+import google.generativeai as genai
 
-# Extend mapping dictionary with logical symbols
-mapping = {
-    "and": "&",
-    "or": "||",
-    "not": "~",
-    "if": "",            # No direct mapping for 'if', handled in logic below
-    "then": "=>",
-    "implies": "=>",
-    "iff": "<=>",
-    "biconditional": "<=>",
-    "implication": "=>"
-}
-
-dictionary = dict()
-
-# Function to translate sentences to logical expressions
-def translate(sentence):
-    words = sentence.split()
-    for i, word in enumerate(words):
+def translate(sentence, dictionary):
+    if type(sentence) is int:
+        return str(sentence)
+    result = ''
+    for word in sentence.split():
         if word in dictionary:
-            words[i] = dictionary[word]
-    return ' '.join(words)
+            result += dictionary[word] + ', '
+    if result.endswith(', '):
+        result = result[:-1]
+    return result.strip()
 
-# Function to process sentence with logic translation
-def process_sentence(sentence):
-    # Remove punctuations for consistent parsing
-    sentence.strip()
-    sentence = sentence.replace(",", "").replace(".", "").replace(";", "")
-    tokens = word_tokenize(sentence)
-    tagged = pos_tag(tokens)
-    
-    # Substitute words with logical symbols
-    logic_expr = []
-    skip_next = False
-    for i, word in enumerate(tokens):
-        # Check if word is a logical keyword
-        if word.lower() in mapping:
-            logic_expr.append(mapping[word.lower()])
-        elif word.lower() == "if" and i + 2 < len(tokens) and tokens[i + 2].lower() == "then":
-            # Special handling for "if ... then"
-            logic_expr.append("(")
-        elif word.lower() == "then":
-            logic_expr.append(")=>")
-            skip_next = True
-        elif not skip_next:
-            logic_expr.append(word)
-        else:
-            skip_next = False
-    
-    # Process logical expression to handle variables uniquely
-    clause = ''
-    current_word = ''
+def parse_prompt(content):
+    if 'TELL' not in content or 'ASK' not in content or 'DICT' not in content:
+        return None, None, None
+    tell_part, other_part = content.split('ASK')
+    ask_part, raw_dictionary = other_part.split('DICT')
+    tell_part = tell_part.replace("TELL", "").strip()
+    ask_part = ask_part.strip()
+    raw_dictionary = raw_dictionary.strip()
+    raw_dictionary = raw_dictionary.split(';')
+    dictionary = dict()
+    for items in raw_dictionary:
+        key, value = items.split(':')
+        dictionary[key.strip()] = value.strip()
+    return tell_part, ask_part, dictionary
 
-    # Iterate over words in logic expression
-    for word in logic_expr:
-        if current_word != '' and word != '' and word in mapping.values():
-            # Add current word to dictionary if not already present
-            if current_word not in dictionary.values():
-                unique_id = str(len(dictionary) + 1)
-                clause += ' ' + unique_id + ' '
-                dictionary[unique_id] = current_word.strip()
-            # Translate logical symbol to corresponding keyword
-            else:
-                for key, value in dictionary.items():
-                    if value == current_word.strip():
-                        clause += ' ' + key + ' '
-            if word != '':
-                clause += word + ' '
-            current_word = ''
-        else:
-            current_word += word + ' '
-    # Add last word to dictionary if not already present
-    if current_word.strip() and current_word not in dictionary.values():
-        unique_id = str(len(dictionary) + 1)
-        clause += ' ' + unique_id + ' '
-        dictionary[unique_id] = current_word.strip()
+def process_prompt(filename):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    genai.configure(api_key="AIzaSyC3tYkpmfCZauuV_tfCYklFeMSeucvxVzw")
+    sentence = ''
+    with open(filename, 'r') as file:
+        sentence = file.read()
 
-    return clause.strip(), dictionary
+    prompt = f"""could you help me translate this sentence into propositional logic:
+    {sentence}
+    rules are as follow: or means ||, and means & if ... then mean a => b. each sentence end with . and ; means it's a clause in knowledge base. "?" means it is ask. the rest like "it is raining" will transform into something like "a" : "it is raining" so that i can represent something as. "if it is raining, i bring umbrella" turns into "1 => 2" with "1" : "it is raining", "2": i bring umbrella"
+    write it as something similar to 
+    TELL
+    a => b; b =>c; c => d; d;
+    ASK
+    d
+    DICT
+    a: it is raining; b: i bring umbrella; c: i am happy; d: i'm millionaire
+    answer in short with no additional information just tell and ask. no additional expession like ``` or \\n"""
 
-# Function to determine sentence type and apply relevant parsing
-def process_input(sentence):
-    sentence = sentence.strip()
-    
-    if sentence.endswith('.'):
-        # Knowledge base entry
-        logic_expr, dict_map = process_sentence(sentence[:-1])
-    elif sentence.endswith(';'):
-        # Complex conditional statement
-        logic_expr, dict_map = process_sentence(sentence[:-1])
-    elif sentence.endswith('?'):
-        # Query
-        logic_expr, dict_map = process_sentence(sentence[:-1])
-    else:
-        # Default handling if not ending with punctuation
-        logic_expr, dict_map = process_sentence(sentence)
+    response = model.generate_content(prompt)
+    print(response.text)
+    tell_part, ask_part, dictionary = parse_prompt(response.text)
 
-    return logic_expr, dict_map
-
-# Test paragraph
-# paragraph = "If it rains and it rains, then the ground is wet. The sky is blue. It is sunny and warm; Is the ground wet?"
-paragraph = "if I'm happy then I win. If I win then You Loose. if you play then you have fun. If I have fun and you have fun then It's a good day. If It's a good day and I dance then you dance. If you loose, you are broke. If you loose and I win then you play. You have fun. I'm millionaire. I have fun. I'm happy."
-# Split the paragraph by ".", ";", or "?" and keep the delimiters
-sentences = re.split(r'([.;?])\s*', paragraph)
-
-# Combine sentences with their delimiters and process each one
-processed_sentences = []
-for i in range(0, len(sentences) - 1, 2):
-    sentence = sentences[i].strip() + sentences[i + 1]  # sentence + delimiter
-    processed_sentences.append(sentence)
-
-# Process each complete sentence
-for s in processed_sentences:
-    if s:  # Ensure the sentence is not empty
-        logic_epxr, _ = process_input(s)
-        print(logic_epxr)
-        print(translate(logic_epxr))
+    return tell_part, ask_part, dictionary
