@@ -136,7 +136,7 @@ class InferenceEngine:
                     added = True
             if not added:
                 break
-        details = ' '.join(self.facts)
+        details = ', '.join(self.facts)
         return ("YES", details) if self.eval_expr(self.query, {fact: True for fact in known_facts}) else ("NO", 0)
 
 
@@ -157,7 +157,7 @@ class InferenceEngine:
             
         # Check if the goal is a fact
         if goal in self.facts:
-            details = ' '.join(self.facts)
+            details = ', '.join(self.facts)
             return True, details
 
         if goal in visited:
@@ -179,13 +179,13 @@ class InferenceEngine:
                     sub_goals = [g.strip() for g in premise.split('||') if g.strip()]
                     if any(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
                         self.facts.append(goal)
-                        details = ' '.join(self.facts)
+                        details = ', '.join(self.facts)
                         return True, details
                 else:
                     sub_goals = [g.strip() for g in premise.split('&') if g.strip()]
                     if all(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
                         self.facts.append(goal)
-                        details = ' '.join(self.facts)
+                        details = ', '.join(self.facts)
                         return True, details
 
         # If no fact or rule supports the goal
