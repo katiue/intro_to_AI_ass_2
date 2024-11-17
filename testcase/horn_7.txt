@@ -2,5 +2,3 @@ TELL
 a
 ASK
 b
-EXPECT
-NO

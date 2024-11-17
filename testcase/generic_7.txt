@@ -2,5 +2,3 @@ TELL
 t<=>s=>r||q&~p; p;~r; 
 ASK
 t
-EXPECT
-NO

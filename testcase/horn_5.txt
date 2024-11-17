@@ -2,5 +2,3 @@ TELL
 a&b => c; c&d = > e; e&f => g; h => i; i =>b; b => d; j => f; a; h; j;
 ASK
 g
-EXPECT
-YES

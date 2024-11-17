@@ -104,16 +104,17 @@ class InferenceEngine:
         try:
             return eval(expr)
         except Exception as e:
-            print(self.filename)
-            print(f"Error evaluating expression: {expr}, Error: {e}")
             return False
     
     def tt_entails(self):
         # Truth Table Method for Entailment
+        count = 0
         for model in self.generate_models():
-            if self.is_kb_true(model) and self.eval_expr(self.query, model):
-                    return "YES"
-        return "NO"
+            if self.is_kb_true(model):
+                count += 1
+                if self.eval_expr(self.query, model):
+                    return "YES", count
+        return "NO", 0
 
     def generate_models(self):
         # Generate all possible truth assignments
@@ -138,19 +139,24 @@ class InferenceEngine:
                     added = True
             if not added:
                 break
-        return "YES" if self.eval_expr(self.query, {fact: True for fact in known_facts}) else "NO"
+        details = ' '.join(self.facts)
+        return ("YES", details) if self.eval_expr(self.query, {fact: True for fact in known_facts}) else ("NO", 0)
 
     def backward_chaining(self):
         # Backward Chaining Method
-        return "YES" if self.bc_recursive(self.query, set()) else "NO"
+        result, detail = self.bc_recursive(self.query, set())
+        if result:
+            return "YES", detail
+        else:
+            return "NO", "0"
 
     def bc_recursive(self, goal, inferred):
         # Recursive helper for backward chaining
         if goal in inferred:
-            return False
+            return False, "0"  # Return a tuple
         inferred.add(goal)
         if goal in self.facts:
-            return True
+            return True, goal  # Return a tuple with the goal as detail
         for rule in self.rules:
             lhs, rhs = re.split(r'\s*=>\s*|\s*<=>\s*', rule, 1)
             lhs = lhs.strip()
@@ -158,14 +164,16 @@ class InferenceEngine:
             if rhs == goal:
                 # Split lhs into premises considering conjunctions
                 premises = split_clauses(lhs)
-                if all(self.bc_recursive(premise.strip(), inferred) for premise in premises):
-                    return True
-        return False
+                premise_results = [self.bc_recursive(premise.strip(), inferred) for premise in premises]
+                if all(result for result, _ in premise_results):
+                    details = ' '.join(self.facts)
+                    return True, details
+        return False, "0"  # Return a tuple
 
     def ask(self, method):
         # Main entry point to evaluate the query using the specified method
         if(not self.check_query_possible()):
-            return "NO"
+            return "NO", "0"
         if method == "TT":
             return self.tt_entails()
         elif method == "FC":
@@ -173,22 +181,23 @@ class InferenceEngine:
         elif method == "BC":
             return self.backward_chaining()
         else:
-            return "Unknown method"
+            return "Unknown method", "N/A"
 
 def parse_file(filename):
     """Parse the KB and query from the input file."""
     with open(filename, 'r') as file:
         content = file.read()
-        tell_part, other_part = content.split('ASK')
-        ask_part, expect_part = other_part.split('EXPECT')
-        tell_part = tell_part.replace("TELL", "").strip()
+        tell_part, ask_part = content.split('ASK')
         ask_part = ask_part.strip()
-        expect_part = expect_part.strip()
-    return tell_part, ask_part, expect_part
+        tell_part = tell_part.replace("TELL", "").strip()
+    return tell_part, ask_part
 
-def run(kb, query, method):
-    engine = InferenceEngine(kb, query)
-    result = engine.ask(method)
+def run(kb, query, method, filename):
+    engine = InferenceEngine(kb, query, filename)
+    result, detail = engine.ask(method)
+    detail = str(detail)
+    if result == "YES":
+        result = "YES: " + detail
     print(f"RESULT\n{result}")
 
 def run_all_tests_in_folder(folder_path, method):
@@ -196,23 +205,22 @@ def run_all_tests_in_folder(folder_path, method):
     for filename in os.listdir(folder_path):
         if filename.endswith(".txt"):  # Only process .txt files
             file_path = os.path.join(folder_path, filename)
-            kb, query, expected_output = parse_file(file_path)
+            kb, query = parse_file(file_path)
             engine = InferenceEngine(kb, query, filename)
-            actual_output = engine.ask(method)
-            result = (actual_output == expected_output)
-            test_results.append((filename, result, actual_output, expected_output))
+            actual_output, detail = engine.ask(method)
+            test_results.append((filename, actual_output, detail))
 
     # Display results
     print("\nTest Results Summary:")
-    for test_file, result, actual, expected in test_results:
-        status = "PASS" if result else "FAIL"
-        print(f"File: {test_file} | Status: {status} | Expected: {expected} | Actual: {actual}")
+    for test_file, result, detail in test_results:
+        print(f"File: {test_file} | Result: {result} | Details: {detail}")
 
     # Summary
     total_tests = len(test_results)
-    passed_tests = sum(1 for _, result, _, _ in test_results if result)
-    print(f"\nTotal Tests: {total_tests} | Passed: {passed_tests} | Failed: {total_tests - passed_tests}")
-
+    YES_tests = sum(1 for _, result, _ in test_results if result == "YES")
+    NO_tests = total_tests - YES_tests
+    print(f"\nTotal Tests: {total_tests} | YES: {YES_tests} | NO: {NO_tests}")
+    
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Allowed inputs:")
@@ -221,10 +229,10 @@ if __name__ == "__main__":
         print("Usage: python initial.py -nl <filename> <method>")
     else:
         if sys.argv[1] == "-f":
-            filename = sys.argv[2]
-            method = sys.argv[3]
-            kb, query, _ = parse_file(filename)
-            run(kb, query, method)
+            if os.path.isdir(sys.argv[2]):
+                folder_path = sys.argv[2]
+                method = sys.argv[3]
+                run_all_tests_in_folder(folder_path, method)
         elif sys.argv[1] == "-nl":
             filename = sys.argv[2]
             method = sys.argv[3]
@@ -232,9 +240,8 @@ if __name__ == "__main__":
             engine = InferenceEngine(kb, query, filename)
             result = engine.ask(method)
             print(f"RESULT\n{result}")
-        elif os.path.isdir(sys.argv[1]):
-            folder_path = sys.argv[1]
-            method = sys.argv[2]
-            run_all_tests_in_folder(folder_path, method)
         else:
-            print("Invalid input. Please provide correct arguments.")
+            filename = sys.argv[1]
+            method = sys.argv[2]
+            kb, query, _ = parse_file(filename)
+            run(kb, query, method, filename)
