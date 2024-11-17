@@ -49,8 +49,6 @@ class InferenceEngine:
                     self.rules.append(sub_clause)
                 else:
                     self.facts.append(sub_clause)
-            print(self.rules)
-            print(self.facts)
 
     def check_query_possible(self):
         expression = re.sub(r'[&|~()<=>]', ' ', self.query)
@@ -147,12 +145,20 @@ class InferenceEngine:
         if goal is None:
             goal = self.query
 
+        goal = goal.replace(' ', '')
+
         if visited is None:
             visited = set()
+
+        if goal.startswith('~'):
+            goal = goal[1:]
+            if goal in self.facts:
+                return not self.backward_chain(goal, visited)
             
         # Check if the goal is a fact
         if goal in self.facts:
-            return True, ''
+            details = ' '.join(self.facts)
+            return True, details
 
         if goal in visited:
             return False, "" # Avoid infinite loops
@@ -160,7 +166,7 @@ class InferenceEngine:
 
         # Check if the goal can be inferred from rules
         for rule in self.rules:
-            if '<=>' not in rule or '=>' not in rule:
+            if '<=>' not in rule and '=>' not in rule:
                 continue
             if '<=>' in rule:
                 premise, conclusion = map(str.strip, rule.split('<=>'))
@@ -169,19 +175,26 @@ class InferenceEngine:
             conclusion = conclusion.replace(' ', '')
             if conclusion == goal:
                 # Split the premise into sub-goals
-                sub_goals = [g.strip() for g in re.split(r'&|\|', premise) if g.strip()]
-                print(sub_goals)
-                if all(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
-                    details = ' '.join(self.facts)
-                    return True, details
+                if '||' in premise:
+                    sub_goals = [g.strip() for g in premise.split('||') if g.strip()]
+                    if any(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
+                        self.facts.append(goal)
+                        details = ' '.join(self.facts)
+                        return True, details
+                else:
+                    sub_goals = [g.strip() for g in premise.split('&') if g.strip()]
+                    if all(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
+                        self.facts.append(goal)
+                        details = ' '.join(self.facts)
+                        return True, details
 
         # If no fact or rule supports the goal
-        return False, "0"
+        return False, ""
 
     def ask(self, method):
         # Main entry point to evaluate the query using the specified method
         if(not self.check_query_possible()):
-            return "NO", "0"
+            return "NO", ""
         if method == "TT":
             return self.tt_entails()
         elif method == "FC":
