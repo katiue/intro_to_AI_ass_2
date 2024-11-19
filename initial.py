@@ -2,7 +2,7 @@ import sys
 import itertools
 import re
 import os
-from NLtranslator import process_prompt, translate
+from NLtranslate import process_prompt, translate
 
 def split_clauses(clause):
     clauses = []
@@ -136,9 +136,8 @@ class InferenceEngine:
                     added = True
             if not added:
                 break
-        details = ', '.join(self.facts)
-        return ("YES", details) if self.eval_expr(self.query, {fact: True for fact in known_facts}) else ("NO", 0)
-
+        details = ', '.join(known_facts)
+        return ("YES", details) if self.eval_expr(self.query, {fact: True for fact in known_facts}) else ("NO", "")
 
     def backward_chain(self, goal=None, visited=None):
         """Backward chaining to determine if the goal can be satisfied."""
@@ -153,15 +152,16 @@ class InferenceEngine:
         if goal.startswith('~'):
             goal = goal[1:]
             if goal in self.facts:
-                return not self.backward_chain(goal, visited)
-            
+                result, _ = self.backward_chain(goal, visited)
+                return not result, ""
+                
         # Check if the goal is a fact
         if goal in self.facts:
             details = ', '.join(self.facts)
             return True, details
 
         if goal in visited:
-            return False, "" # Avoid infinite loops
+            return False, ""  # Avoid infinite loops
         visited.add(goal)
 
         # Check if the goal can be inferred from rules
@@ -177,13 +177,13 @@ class InferenceEngine:
                 # Split the premise into sub-goals
                 if '||' in premise:
                     sub_goals = [g.strip() for g in premise.split('||') if g.strip()]
-                    if any(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
+                    if any(self.backward_chain(sub_goal, visited)[0] for sub_goal in sub_goals):
                         self.facts.append(goal)
                         details = ', '.join(self.facts)
                         return True, details
                 else:
                     sub_goals = [g.strip() for g in premise.split('&') if g.strip()]
-                    if all(self.backward_chain(sub_goal, visited) for sub_goal in sub_goals):
+                    if all(self.backward_chain(sub_goal, visited)[0] for sub_goal in sub_goals):
                         self.facts.append(goal)
                         details = ', '.join(self.facts)
                         return True, details
@@ -217,7 +217,7 @@ def run(kb, query, method, filename):
     engine = InferenceEngine(kb, query, filename)
     result, detail = engine.ask(method)
     detail = str(detail)
-    if result == "YES" or result:
+    if result == "YES" or result == True:
         result = "YES: " + detail
     else:
         result = "NO"

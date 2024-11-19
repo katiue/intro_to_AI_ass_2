@@ -1,4 +1,4 @@
 TELL
 a
 ASK
-a
+b
